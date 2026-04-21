@@ -1,109 +1,162 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cloud Computing Practice Quiz</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud Quiz Studio</title>
+  <meta name="description" content="A polished cloud concepts quiz with practice mode, timers, bookmarks, and topic-based review." />
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Cloud Computing Quiz</h1>
-    <button id="theme-toggle">Toggle Dark Mode</button>
+  <div class="ambient ambient-left" aria-hidden="true"></div>
+  <div class="ambient ambient-right" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Cloud Concepts Drill</p>
+      <h1>Cloud Quiz Studio</h1>
+    </div>
+
+    <div class="topbar-actions">
+      <div class="score-chip">
+        <span class="chip-label">Best score</span>
+        <strong><span id="best-score-val">0</span>%</strong>
+      </div>
+      <button id="theme-toggle" class="ghost-button" type="button" aria-pressed="false">Dark mode</button>
+    </div>
   </header>
 
-  <main class="container">
-    <section id="home-screen" class="card">
-      <h2>Configuration</h2>
-      
-      <div class="form-group">
-        <label for="topic-select">Select Topic:</label>
-        <select id="topic-select">
-          <option value="All">All Topics</option>
-          <option value="Cloud Basics">Cloud Basics</option>
-          <option value="Security">Security</option>
-          <option value="Docker">Docker</option>
-        </select>
-      </div>
+  <main class="app-shell">
+    <section id="home-screen" class="screen active" aria-labelledby="home-title">
+      <div class="hero-grid">
+        <div class="hero-copy panel">
+          <p class="section-label">Study mode</p>
+          <h2 id="home-title">Practice cloud basics, review explanations, and retry only the questions you missed.</h2>
+          <p class="lede">
+            Use practice mode for immediate feedback or exam mode for a clean run. Filter by topic, pick how many questions you want,
+            and optionally run with a timer.
+          </p>
 
-      <div class="form-group">
-        <label for="count-select">Number of Questions:</label>
-        <select id="count-select">
-          <option value="10">10</option>
-          <option value="20">20</option>
-          <option value="All">All Available</option>
-        </select>
-      </div>
+          <div class="stat-grid" aria-label="Quiz overview stats">
+            <article class="stat-card">
+              <span id="question-count-val">0</span>
+              <small>Total questions</small>
+            </article>
+            <article class="stat-card">
+              <span id="topic-count-val">0</span>
+              <small>Topics covered</small>
+            </article>
+            <article class="stat-card">
+              <span>1 min</span>
+              <small>Per question with timer</small>
+            </article>
+          </div>
 
-      <div class="form-group">
-        <label>Mode:</label>
-        <div class="radio-group">
-          <input type="radio" id="mode-practice" name="quiz-mode" value="practice" checked>
-          <label for="mode-practice">Practice (Instant Feedback)</label>
-          <input type="radio" id="mode-exam" name="quiz-mode" value="exam">
-          <label for="mode-exam">Exam (Feedback at End)</label>
+          <p id="home-status" class="home-status" aria-live="polite"></p>
+        </div>
+
+        <div class="control-panel panel">
+          <h3>Configure your quiz</h3>
+
+          <label class="field">
+            <span>Topic</span>
+            <select id="topic-select">
+              <option value="All">All topics</option>
+              <option value="Cloud Basics">Cloud Basics</option>
+              <option value="Docker">Docker</option>
+              <option value="Security">Security</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Question count</span>
+            <select id="count-select">
+              <option value="All">All available</option>
+              <option value="1">1 question</option>
+              <option value="3">3 questions</option>
+              <option value="5">5 questions</option>
+            </select>
+          </label>
+
+          <div class="field">
+            <span>Mode</span>
+            <div class="mode-group" role="radiogroup" aria-label="Quiz mode">
+              <label><input type="radio" name="quiz-mode" value="practice" checked /> Practice</label>
+              <label><input type="radio" name="quiz-mode" value="exam" /> Exam</label>
+            </div>
+          </div>
+
+          <label class="toggle-row">
+            <input id="timer-toggle" type="checkbox" />
+            <span>Enable timer</span>
+          </label>
+
+          <button id="start-btn" class="primary-button" type="button">Start quiz</button>
         </div>
       </div>
-
-      <div class="form-group">
-        <label>
-          <input type="checkbox" id="timer-toggle"> Enable Timer (1 min per question)
-        </label>
-      </div>
-
-      <p class="best-score-display">Best Score: <span id="best-score-val">0</span>%</p>
-      
-      <button id="start-btn" class="primary-btn">Start Quiz</button>
     </section>
 
-    <section id="quiz-screen" class="card hidden">
-      <div class="quiz-header">
-        <span id="progress-text">Question 1/10</span>
-        <span id="timer-display" class="hidden">00:00</span>
-        <button id="bookmark-btn" class="icon-btn">🔖 Bookmark</button>
-      </div>
-      
-      <div class="progress-bar-container">
-        <div id="progress-bar"></div>
-      </div>
+    <section id="quiz-screen" class="screen hidden" aria-labelledby="quiz-title">
+      <div class="quiz-layout">
+        <article class="quiz-card panel">
+          <div class="quiz-header">
+            <div>
+              <p class="section-label">Active quiz</p>
+              <p id="progress-text" class="progress-text">Question 1/1</p>
+            </div>
+            <button id="bookmark-btn" class="ghost-button" type="button">Bookmark</button>
+          </div>
 
-      <h3 id="question-text">Question text goes here?</h3>
-      <p id="question-instruction" class="instruction-text"></p>
-      
-      <div id="options-container">
-        </div>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
 
-      <div id="instant-feedback" class="hidden"></div>
+          <div id="timer-display" class="timer-pill hidden" role="status" aria-live="polite">00:00</div>
 
-      <div class="quiz-footer">
-        <button id="prev-btn" class="secondary-btn" disabled>Previous</button>
-        <button id="check-btn" class="secondary-btn hidden">Check Answer</button>
-        <button id="next-btn" class="primary-btn">Next</button>
-        <button id="submit-btn" class="primary-btn hidden">Submit Quiz</button>
+          <h2 id="quiz-title" class="question-text"></h2>
+          <p id="question-instruction" class="question-instruction"></p>
+
+          <div id="options-container" class="options-grid"></div>
+
+          <div id="instant-feedback" class="feedback hidden" aria-live="polite"></div>
+
+          <div class="action-row">
+            <button id="prev-btn" class="ghost-button" type="button">Previous</button>
+            <button id="check-btn" class="primary-button" type="button">Check answer</button>
+            <button id="next-btn" class="primary-button hidden" type="button">Next</button>
+            <button id="submit-btn" class="primary-button hidden" type="button">Submit quiz</button>
+          </div>
+        </article>
       </div>
     </section>
 
-    <section id="result-screen" class="card hidden">
-      <h2>Quiz Results</h2>
-      <div class="score-display">
-        <h3 id="score-text">You scored X out of Y</h3>
-        <h1 id="percentage-text">0%</h1>
+    <section id="result-screen" class="screen hidden" aria-labelledby="result-title">
+      <div class="result-layout">
+        <article class="result-summary panel">
+          <p class="section-label">Results</p>
+          <h2 id="result-title">Your score</h2>
+          <p id="score-text" class="score-text"></p>
+          <p id="percentage-text" class="percentage-text"></p>
+
+          <div id="topic-performance" class="topic-performance"></div>
+
+          <div class="result-actions">
+            <button id="review-btn" class="ghost-button" type="button">Review answers</button>
+            <button id="restart-btn" class="primary-button" type="button">Back to home</button>
+            <button id="retry-incorrect-btn" class="secondary-button hidden" type="button">Retry incorrect</button>
+          </div>
+        </article>
+
+        <article class="review-panel panel">
+          <div class="review-panel-head">
+            <h3>Answer review</h3>
+            <p>Compare what you chose with the correct answers and read the explanation.</p>
+          </div>
+          <div id="review-container" class="review-list hidden"></div>
+        </article>
       </div>
-
-      <div id="topic-performance">
-        </div>
-
-      <div class="result-actions">
-        <button id="review-btn" class="secondary-btn">Review Answers</button>
-        <button id="retry-incorrect-btn" class="secondary-btn hidden">Retry Incorrect</button>
-        <button id="restart-btn" class="primary-btn">Back to Home</button>
-      </div>
-
-      <div id="review-container" class="hidden">
-        </div>
     </section>
   </main>
-
-  <script src="script.js"></script>
 </body>
 </html>
