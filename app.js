@@ -1,4 +1,5 @@
 let questionsDb = [];
+let localQuestionsDb = [];
 
 const state = {
   currentQuestions: [],
@@ -37,9 +38,151 @@ const reviewContainer = document.getElementById("review-container");
 const topicPerformance = document.getElementById("topic-performance");
 const topicSelect = document.getElementById("topic-select");
 const countSelect = document.getElementById("count-select");
+const apiKeyInput = document.getElementById("apiKey");
+const useAICheckbox = document.getElementById("useAI");
+const apiKeyStorageKey = "cloudQuizGeminiApiKey";
 
 function $(selector) {
   return document.querySelector(selector);
+}
+
+function normalizeQuestions(questions) {
+  return questions.map((question, index) => ({
+    ...question,
+    id: index + 1,
+    type: question.type === "multi" ? "multi" : "single",
+    topic: question.topic || "General",
+    options: Array.isArray(question.options) ? question.options.slice(0, 4) : [],
+    correct: Array.isArray(question.correct) ? question.correct : []
+  }));
+}
+
+function getSampleQuestions() {
+  return shuffleQuestions(localQuestionsDb).slice(0, 5).map((question) => ({
+    question: question.question,
+    options: question.options,
+    correct: question.correct,
+    type: question.type,
+    topic: question.topic,
+    explanation: question.explanation
+  }));
+}
+
+function cleanJSON(rawText) {
+  if (typeof rawText !== "string") {
+    return "";
+  }
+
+  const withoutCodeFence = rawText
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const firstBracket = withoutCodeFence.indexOf("[");
+  const lastBracket = withoutCodeFence.lastIndexOf("]");
+
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    return withoutCodeFence.slice(firstBracket, lastBracket + 1);
+  }
+
+  return withoutCodeFence;
+}
+
+function loadStoredApiKey() {
+  const savedApiKey = localStorage.getItem(apiKeyStorageKey);
+  if (savedApiKey && apiKeyInput) {
+    apiKeyInput.value = savedApiKey;
+  }
+}
+
+function saveApiKeyToStorage() {
+  if (!apiKeyInput) {
+    return;
+  }
+
+  const apiKey = apiKeyInput.value.trim();
+  if (apiKey) {
+    localStorage.setItem(apiKeyStorageKey, apiKey);
+  } else {
+    localStorage.removeItem(apiKeyStorageKey);
+  }
+}
+
+async function generateQuestionsWithGemini(apiKey) {
+  const modelCandidates = ["gemini-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
+  const sampleQuestions = getSampleQuestions();
+  const prompt = [
+    "Generate 10 Cloud Computing multiple-choice questions similar to NPTEL exam.",
+    "Requirements:",
+    "- 4 options (A-D)",
+    "- Include correct answer index",
+    "- Include explanation",
+    "- Keep difficulty moderate to high",
+    "- Cover topics: Cloud Computing basics, Virtualization, Security, Edge/Fog computing, Serverless",
+    "Return ONLY JSON in this format:",
+    "[",
+    "{",
+    '"question": "...",',
+    '"options": ["A", "B", "C", "D"],',
+    '"correct": [index],',
+    '"type": "single",',
+    '"topic": "...",',
+    '"explanation": "..."',
+    "}",
+    "]",
+    "Use these 5 example questions to match style and quality:",
+    JSON.stringify(sampleQuestions)
+  ].join("\n");
+
+  const fetchErrors = [];
+
+  for (const modelName of modelCandidates) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": apiKey
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        fetchErrors.push(`${modelName}:${response.status}`);
+        break;
+      }
+
+      const data = await response.json();
+      const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const cleaned = cleanJSON(generatedText);
+
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error("Generated payload is not a valid non-empty array");
+        }
+        return normalizeQuestions(parsed);
+      } catch (parseError) {
+        if (attempt === 2) {
+          fetchErrors.push(`${modelName}:json-parse`);
+        }
+      }
+    }
+  }
+
+  throw new Error(`Unable to generate questions (${fetchErrors.join(", ") || "unknown error"})`);
 }
 
 async function loadQuestions() {
@@ -56,17 +199,11 @@ async function loadQuestions() {
       throw new Error("questions.json is empty or invalid");
     }
 
-    questionsDb = payload.map((question, index) => ({
-      ...question,
-      id: index + 1,
-      type: question.type === "multi" ? "multi" : "single",
-      topic: question.topic || "General",
-      options: Array.isArray(question.options) ? question.options : [],
-      correct: Array.isArray(question.correct) ? question.correct : []
-    }));
+    questionsDb = normalizeQuestions(payload);
+    localQuestionsDb = [...questionsDb];
   } catch (error) {
-    console.error("Using embedded questions due to load error:", error);
-    homeStatus.textContent = "Could not load questions.json. Using bundled questions instead.";
+    console.error("Could not load local question bank:", error);
+    homeStatus.textContent = "Could not load questions.json. Please check your local dataset.";
   }
 }
 
@@ -510,11 +647,48 @@ function startQuizWithQuestions(questions, isRetry = false) {
   renderQuestion();
 }
 
-function startQuiz() {
-  const topicFilter = topicSelect.value;
-  const countFilter = countSelect.value;
+async function startQuiz() {
+  let topicFilter = topicSelect.value;
+  let countFilter = countSelect.value;
   state.config.mode = getSelectedMode();
   state.config.timerEnabled = document.getElementById("timer-toggle").checked;
+  const useAI = Boolean(useAICheckbox?.checked);
+
+  startBtn.disabled = true;
+  const originalStartLabel = startBtn.textContent;
+  startBtn.textContent = useAI ? "Generating..." : "Starting...";
+
+  try {
+    if (useAI) {
+      const apiKey = apiKeyInput?.value.trim() || "";
+      if (!apiKey) {
+        alert("Please enter your Gemini API key to use AI generated questions.");
+        return;
+      }
+
+      questionsDb = await generateQuestionsWithGemini(apiKey);
+      populateFilterControls();
+      renderHomeStats();
+      homeStatus.textContent = "Using AI generated questions for this quiz.";
+    } else {
+      questionsDb = [...localQuestionsDb];
+      populateFilterControls();
+      renderHomeStats();
+    }
+  } catch (error) {
+    console.error("AI generation failed, falling back to local questions:", error);
+    alert("AI generation failed. Falling back to local questions.");
+    questionsDb = [...localQuestionsDb];
+    populateFilterControls();
+    renderHomeStats();
+    homeStatus.textContent = "AI generation failed. Using local questions instead.";
+  } finally {
+    startBtn.disabled = false;
+    startBtn.textContent = originalStartLabel;
+  }
+
+  topicFilter = topicSelect.value;
+  countFilter = countSelect.value;
 
   let filteredQuestions = getAvailableQuestions(topicFilter);
   filteredQuestions = shuffleQuestions(filteredQuestions);
@@ -567,6 +741,7 @@ async function init() {
   populateFilterControls();
   renderHomeStats();
   initTheme();
+  loadStoredApiKey();
 
   const bestScore = Number(localStorage.getItem("cloudQuizBestScore") || 0);
   document.getElementById("best-score-val").textContent = String(bestScore);
@@ -579,6 +754,7 @@ async function init() {
   bookmarkBtn.addEventListener("click", toggleBookmark);
   topicSelect.addEventListener("change", refreshFilterSummary);
   countSelect.addEventListener("change", updateHomeStatus);
+  apiKeyInput.addEventListener("input", saveApiKeyToStorage);
   reviewBtn.addEventListener("click", () => {
     reviewContainer.classList.toggle("hidden");
     reviewBtn.textContent = reviewContainer.classList.contains("hidden") ? "Review answers" : "Hide review";
